@@ -7,6 +7,8 @@ const props = defineProps<{
 	isFlag: boolean;
 	isOpen: boolean;
 	isWrongFlag: boolean;
+	isHighlightClick: boolean;
+	isHighlightFlag: boolean;
 }>();
 </script>
 
@@ -19,6 +21,8 @@ const props = defineProps<{
 			isOpen ? 'cell-open' : '',
 			isOpen && !isMine && nMinesAround > 0 ? `cell-n${nMinesAround}` : '',
 			isWrongFlag ? 'cell-wrong-flag' : '',
+			isHighlightClick ? 'cell-highlight-click' : '',
+			isHighlightFlag ? 'cell-highlight-flag' : '',
 		]"></div>
 </template>
 
@@ -65,6 +69,16 @@ const props = defineProps<{
 	background-size: 25px;
 	background-repeat: no-repeat;
 	background-position: center;
+}
+.cell-highlight-click {
+	--cell-color-default: rgb(112, 157, 115);
+	--cell-color-hover: rgb(106, 137, 108);
+	--cell-color-open: rgb(170, 221, 165);
+}
+.cell-highlight-flag {
+	--cell-color-default: rgb(78, 113, 160);
+	--cell-color-hover: rgb(82, 109, 136);
+	--cell-color-open: rgb(137, 184, 219);
 }
 .cell-n1 {
 	color: blue;

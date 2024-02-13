@@ -11,7 +11,8 @@ const gameField = ref<typeof GameField | null>(null);
 	<div class="app-wrapper theme-light">
 		<Controls
 			@reset="gameField?.onReset"
-			@bot="gameField?.onBot"/>
+			@bot="gameField?.onBot"
+			@highlight="gameField?.onHighlight"/>
 		<GameField ref="gameField" />
 		<FieldSettings
 			@onSettingsChanged="gameField?.onSettingsChanged"/>

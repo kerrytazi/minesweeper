@@ -21,9 +21,13 @@ let nRows = ref(10);
 let nCols = ref(10);
 let nMines = ref(20);
 
-let useBot = ref(false);
+let useBot = false;
 let botInterval: number | null = null;
-let botStepDelay = 500;
+let botStepDelay = 0;
+
+let useHighlight = ref(false);
+const highlightsClick = ref<CellData[]>([]);
+const highlightsFlag = ref<CellData[]>([]);
 
 let generated = ref(false);
 let gameLose = ref(false);
@@ -40,8 +44,13 @@ const resetField = () => {
 	nOpened.value = 0;
 	table.value = createTableRows(nRows.value, nCols.value);
 
-	if (useBot.value) {
+	if (useBot) {
 		console.log(`[bot] reset field`);
+	}
+
+	if (useHighlight.value) {
+		highlightsClick.value = [];
+		highlightsFlag.value = [];
 	}
 };
 
@@ -92,15 +101,23 @@ const generateField = (skipCell: CellData) => {
 const onGameLose = () => {
 	gameLose.value = true;
 
-	if (useBot.value) {
+	if (useBot) {
 		console.log(`[bot] game lost`);
 	}
 };
 
 const onGameWin = () => {
+	for (let row of table.value) {
+		for (let cell of row) {
+			if (!cell.isOpen && !cell.isFlag) {
+				onContextmenu(cell);
+			}
+		}
+	}
+
 	gameWin.value = true;
 
-	if (useBot.value) {
+	if (useBot) {
 		console.log(`[bot] game won`);
 	}
 };
@@ -136,6 +153,10 @@ const openCell = (cell: CellData) => {
 			forEachAround(cell, (c) => toOpen.push(c));
 		}
 	}
+
+	if (useHighlight.value) {
+		updateHighlights();
+	}
 };
 
 const onContextmenu = (cell: CellData) => {
@@ -156,6 +177,10 @@ const onContextmenu = (cell: CellData) => {
 			cell.isFlag = true;
 			++nFlags.value;
 			forEachAround(cell, (c) => ++c.nFlagsAround);
+		}
+
+		if (useHighlight.value) {
+			updateHighlights();
 		}
 	}
 };
@@ -207,16 +232,29 @@ const onClick = (cell: CellData) => {
 	}
 };
 
-const botStep = () => {
+interface BotStepParams {
+	clickCallback: (cell: CellData) => void;
+	flagCallback: (cell: CellData) => void;
+	singleStep: boolean;
+	allowRandom: boolean;
+	allowRestart: boolean;
+	useLog?: boolean;
+	logPrefix?: string;
+}
+
+const botStep = (botParams: BotStepParams) => {
 	if (gameLose.value || gameWin.value) {
-		// resetField();
 		return;
 	}
 
 	if (!generated.value) {
+		if (!botParams.allowRandom) {
+			return;
+		}
+
 		let row = (Math.random() * nRows.value) | 0;
 		let col = (Math.random() * nCols.value) | 0;
-		onClick(table.value[row][col]);
+		botParams.clickCallback(table.value[row][col]);
 		return;
 	}
 
@@ -233,11 +271,17 @@ const botStep = () => {
 					if (closed > 0 && closed === cell.nMinesAround - cell.nFlagsAround) {
 						forEachAround(cell, (c) => {
 							if (!c.isOpen && !c.isFlag) {
-								console.log(`[bot] obvious flag {${c.rowIndex} ${c.colIndex}}; because of {${cell.rowIndex} ${cell.colIndex}}`);
-								onContextmenu(c);
+								if (botParams.useLog) {
+									console.log(`[${botParams.logPrefix??'bot'}] obvious flag {${c.rowIndex} ${c.colIndex}}; because of {${cell.rowIndex} ${cell.colIndex}}`);
+								}
+
+								botParams.flagCallback(c);
 							}
 						});
-						return;
+
+						if (botParams.singleStep) {
+							return;
+						}
 					}
 				}
 			}
@@ -257,11 +301,17 @@ const botStep = () => {
 					if (closed > 0 && cell.nMinesAround === cell.nFlagsAround) {
 						forEachAround(cell, (c) => {
 							if (!c.isOpen && !c.isFlag) {
-								console.log(`[bot] open click {${c.rowIndex} ${c.colIndex}}; because of {${cell.rowIndex} ${cell.colIndex}}`);
-								onClick(c);
+								if (botParams.useLog) {
+									console.log(`[${botParams.logPrefix??'bot'}] open click {${c.rowIndex} ${c.colIndex}}; because of {${cell.rowIndex} ${cell.colIndex}}`);
+								}
+
+								botParams.clickCallback(c);
 							}
 						});
-						return;
+
+						if (botParams.singleStep) {
+							return;
+						}
 					}
 				}
 			}
@@ -285,7 +335,9 @@ const botStep = () => {
 					for (let c of aroundCells) {
 						forEachAround(c, (c2) => {
 							if (found) {
-								return;
+								if (botParams.singleStep) {
+									return;
+								}
 							}
 
 							if (c2 !== cell && c2.isOpen && c2.nMinesAround > 0) {
@@ -308,8 +360,11 @@ const botStep = () => {
 
 											for (let cc of aroundCells) {
 												if (!combine.includes(cc)) {
-													console.log(`[bot] flag {${cc.rowIndex} ${cc.colIndex}}; because of {${cell.rowIndex} ${cell.colIndex}} and {${c2.rowIndex} ${c2.colIndex}}`);
-													onContextmenu(cc);
+													if (botParams.useLog) {
+														console.log(`[${botParams.logPrefix??'bot'}] flag {${cc.rowIndex} ${cc.colIndex}}; because of {${cell.rowIndex} ${cell.colIndex}} and {${c2.rowIndex} ${c2.colIndex}}`);
+													}
+													
+													botParams.flagCallback(cc);
 												}
 											}
 										} else if (cell.nMinesAround - cell.nFlagsAround === 1 && c2.nMinesAround - c2.nFlagsAround === 1 && aroundCells2.length === combine.length && aroundCells.length - combine.length + c2.nMinesAround - c2.nFlagsAround > cell.nMinesAround - cell.nFlagsAround) { // kill me pls
@@ -317,8 +372,11 @@ const botStep = () => {
 
 											for (let cc of aroundCells) {
 												if (!combine.includes(cc)) {
-													console.log(`[bot] 1-1-X click {${cc.rowIndex} ${cc.colIndex}}; because of {${cell.rowIndex} ${cell.colIndex}} and {${c2.rowIndex} ${c2.colIndex}}`);
-													onClick(cc);
+													if (botParams.useLog) {
+														console.log(`[${botParams.logPrefix??'bot'}] 1-1-X click {${cc.rowIndex} ${cc.colIndex}}; because of {${cell.rowIndex} ${cell.colIndex}} and {${c2.rowIndex} ${c2.colIndex}}`);
+													}
+
+													botParams.clickCallback(cc);
 												}
 											}
 										}
@@ -328,7 +386,9 @@ const botStep = () => {
 						});
 
 						if (found) {
-							return;
+							if (botParams.singleStep) {
+								return;
+							}
 						}
 					}
 				}
@@ -336,9 +396,7 @@ const botStep = () => {
 		}
 	}
 
-	// resetField();
-
-	if (true)
+	if (botParams.allowRandom)
 	{
 		let poses = [];
 
@@ -353,18 +411,29 @@ const botStep = () => {
 		let index = (Math.random() * poses.length) | 0;
 		let pos = poses[index];
 
-		console.log(`[bot] random click {${pos[0]} ${pos[1]}}`);
+		if (botParams.useLog) {
+			console.log(`[${botParams.logPrefix??'bot'}] random click {${pos[0]} ${pos[1]}}`);
+		}
+
 		onClick(table.value[pos[0]][pos[1]]);
 		return;
 	}
+
+	if (botParams.allowRestart) {
+		resetField();
+	}
+};
+
+const onReset = () => {
+	resetField();
 };
 
 const onBot = (active: boolean) => {
-	if (useBot.value === active) {
+	if (useBot === active) {
 		return;
 	}
 
-	useBot.value = active;
+	useBot = active;
 
 	if (botInterval) {
 		clearInterval(botInterval);
@@ -373,13 +442,40 @@ const onBot = (active: boolean) => {
 
 	if (active) {
 		botInterval = setInterval(() => {
-			botStep();
+			botStep({
+				clickCallback: onClick,
+				flagCallback: onContextmenu,
+				singleStep: true,
+				allowRandom: true,
+				allowRestart: false,
+				useLog: true,
+				logPrefix: 'bot',
+			});
 		}, botStepDelay);
 	}
 };
 
-const onReset = () => {
-	resetField();
+const updateHighlights = () => {
+	highlightsClick.value = [];
+	highlightsFlag.value = [];
+
+	botStep({
+		clickCallback: (c: CellData) => { highlightsClick.value.push(c); },
+		flagCallback: (c: CellData) => { highlightsFlag.value.push(c); },
+		singleStep: false,
+		allowRandom: false,
+		allowRestart: false,
+	});
+};
+
+const onHighlight = (active: boolean) => {
+	if (useHighlight.value === active) {
+		return;
+	}
+
+	useHighlight.value = active;
+
+	updateHighlights();
 };
 
 const onSettingsChanged = (settings: GameFieldSettings) => {
@@ -391,8 +487,9 @@ const onSettingsChanged = (settings: GameFieldSettings) => {
 };
 
 defineExpose({
-	onBot,
 	onReset,
+	onBot,
+	onHighlight,
 	onSettingsChanged,
 });
 </script>
@@ -408,6 +505,8 @@ defineExpose({
 				:isFlag="cell.isFlag"
 				:isWrongFlag="gameLose && cell.isFlag && !cell.isMine"
 				:isOpen="cell.isOpen"
+				:isHighlightClick="useHighlight && highlightsClick.includes(cell)"
+				:isHighlightFlag="useHighlight && highlightsFlag.includes(cell)"
 				@click="onClick(cell)"
 				@contextmenu.prevent="onContextmenu(cell)" />
 		</div>
