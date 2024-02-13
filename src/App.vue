@@ -9,9 +9,12 @@ const gameField = ref<typeof GameField | null>(null);
 
 <template>
 	<div class="app-wrapper theme-light">
-		<Controls @reset="gameField?.onReset"/>
+		<Controls
+			@reset="gameField?.onReset"
+			@bot="gameField?.onBot"/>
 		<GameField ref="gameField" />
-		<FieldSettings @onSettingsChanged="gameField?.onSettingsChanged"/>
+		<FieldSettings
+			@onSettingsChanged="gameField?.onSettingsChanged"/>
 	</div>
 </template>
 
