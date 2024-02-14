@@ -3,6 +3,15 @@ import { ref } from 'vue';
 import Controls from './components/Controls.vue';
 import GameField from './components/GameField.vue';
 import FieldSettings from './components/FieldSettings.vue';
+import { socket } from '@/socket';
+
+socket.on('connect', () => {
+	socket.emit('ping', 'hello');
+});
+
+socket.on('pong', (arg: string) => {
+	console.log(arg);
+});
 
 const gameField = ref<typeof GameField | null>(null);
 </script>
