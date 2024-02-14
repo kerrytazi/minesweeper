@@ -17,13 +17,15 @@ const createDefaultCellData = (row: number, col: number): CellData => ({ nMinesA
 const createTableCols = (row: number, nCols: number) => Array.from({length: nCols}, (_, col) => createDefaultCellData(row, col));
 const createTableRows = (nRows: number, nCols: number) => Array.from({length: nRows}, (_, row) => createTableCols(row, nCols));
 
+const deepCopy = <T>(obj: T): T => JSON.parse(JSON.stringify(obj));
+
 let nRows = ref(10);
 let nCols = ref(10);
 let nMines = ref(20);
 
 let useBot = false;
-let botInterval: NodeJS.Timeout | null = null;
-let botStepDelay = 0;
+let botInterval: ReturnType<typeof setInterval> | null = null;
+let botStepDelay = 10;
 
 let useHighlight = ref(false);
 const highlightsClick = ref<CellData[]>([]);
@@ -36,6 +38,66 @@ let nFlags = ref(0);
 let nOpened = ref(0);
 let table = ref(createTableRows(nRows.value, nCols.value));
 
+interface HistoryItem {
+	generated: boolean;
+	gameLose: boolean;
+	gameWin: boolean;
+	nFlags: number;
+	nOpened: number;
+	table: CellData[][];
+}
+
+let history: HistoryItem[] = [];
+let historyIndex = -1;
+
+const historyPush = () => {
+	if (historyIndex + 1 < history.length) {
+		history.splice(historyIndex + 1);
+	}
+
+	history.push({
+		generated: deepCopy(generated.value),
+		gameLose: deepCopy(gameLose.value),
+		gameWin: deepCopy(gameWin.value),
+		nFlags: deepCopy(nFlags.value),
+		nOpened: deepCopy(nOpened.value),
+		table: deepCopy(table.value),
+	});
+
+	++historyIndex;
+};
+
+const historyApply = () => {
+	generated.value = deepCopy(history[historyIndex].generated);
+	gameLose.value = deepCopy(history[historyIndex].gameLose);
+	gameWin.value = deepCopy(history[historyIndex].gameWin);
+	nFlags.value = deepCopy(history[historyIndex].nFlags);
+	nOpened.value = deepCopy(history[historyIndex].nOpened);
+	table.value = deepCopy(history[historyIndex].table);
+
+	if (useHighlight.value) {
+		updateHighlights();
+	}
+}
+
+const historyBack = () => {
+	if (historyIndex === 0) {
+		return;
+	}
+
+	--historyIndex;
+	historyApply();
+};
+
+const historyForward = () => {
+	if (historyIndex === history.length - 1) {
+		return;
+	}
+
+	++historyIndex;
+	historyApply();
+};
+
 const resetField = () => {
 	generated.value = false;
 	gameLose.value = false;
@@ -43,6 +105,10 @@ const resetField = () => {
 	nFlags.value = 0;
 	nOpened.value = 0;
 	table.value = createTableRows(nRows.value, nCols.value);
+
+	history = [];
+	historyIndex = -1;
+	historyPush(); // Empty field
 
 	if (useBot) {
 		console.log(`[bot] reset field`);
@@ -183,6 +249,8 @@ const onContextmenu = (cell: CellData) => {
 			updateHighlights();
 		}
 	}
+
+	historyPush();
 };
 
 const checkWin = () => {
@@ -204,19 +272,27 @@ const onClick = (cell: CellData) => {
 		if (cell.isMine) {
 			cell.isOpen = true;
 			onGameLose();
+			historyPush();
 			return;
 		}
 
 		if (cell.isOpen)
 		{
+			let changed = false;
+
 			if (cell.nMinesAround > 0) {
 				if (cell.nMinesAround <= cell.nFlagsAround) {
 					forEachAround(cell, (c) => {
 						if (!c.isFlag && !c.isOpen) {
+							changed = true;
 							openCell(c);
 						}
 					});
 				}
+			}
+
+			if (changed) {
+				historyPush();
 			}
 
 			return;
@@ -224,11 +300,13 @@ const onClick = (cell: CellData) => {
 
 		openCell(cell);
 		checkWin();
+		historyPush();
 	} else {
 		generateField(cell);
 		generated.value = true;
 		openCell(cell);
 		checkWin();
+		historyPush();
 	}
 };
 
@@ -237,13 +315,17 @@ interface BotStepParams {
 	flagCallback: (cell: CellData) => void;
 	singleStep: boolean;
 	allowRandom: boolean;
-	allowRestart: boolean;
+	allowRestartOnFail: boolean;
 	useLog?: boolean;
 	logPrefix?: string;
 }
 
 const botStep = (botParams: BotStepParams) => {
 	if (gameLose.value || gameWin.value) {
+		if (gameLose.value && botParams.allowRestartOnFail) {
+			resetField();
+		}
+
 		return;
 	}
 
@@ -419,13 +501,21 @@ const botStep = (botParams: BotStepParams) => {
 		return;
 	}
 
-	if (botParams.allowRestart) {
+	if (botParams.allowRestartOnFail) {
 		resetField();
 	}
 };
 
 const onReset = () => {
 	resetField();
+};
+
+const onHistoryBack = () => {
+	historyBack();
+};
+
+const onHistoryForward = () => {
+	historyForward();
 };
 
 const onBot = (active: boolean) => {
@@ -447,7 +537,7 @@ const onBot = (active: boolean) => {
 				flagCallback: onContextmenu,
 				singleStep: true,
 				allowRandom: true,
-				allowRestart: false,
+				allowRestartOnFail: true,
 				useLog: true,
 				logPrefix: 'bot',
 			});
@@ -464,7 +554,7 @@ const updateHighlights = () => {
 		flagCallback: (c: CellData) => { highlightsFlag.value.push(c); },
 		singleStep: false,
 		allowRandom: false,
-		allowRestart: false,
+		allowRestartOnFail: false,
 	});
 };
 
@@ -488,6 +578,8 @@ const onSettingsChanged = (settings: GameFieldSettings) => {
 
 defineExpose({
 	onReset,
+	onHistoryBack,
+	onHistoryForward,
 	onBot,
 	onHighlight,
 	onSettingsChanged,

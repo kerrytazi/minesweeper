@@ -20,6 +20,8 @@ const gameField = ref<typeof GameField | null>(null);
 	<div class="app-wrapper theme-light">
 		<Controls
 			@reset="gameField?.onReset"
+			@historyBack="gameField?.onHistoryBack"
+			@historyForward="gameField?.onHistoryForward"
 			@bot="gameField?.onBot"
 			@highlight="gameField?.onHighlight"/>
 		<GameField ref="gameField" />
