@@ -22,7 +22,7 @@ let nCols = ref(10);
 let nMines = ref(20);
 
 let useBot = false;
-let botInterval: number | null = null;
+let botInterval: NodeJS.Timeout | null = null;
 let botStepDelay = 0;
 
 let useHighlight = ref(false);

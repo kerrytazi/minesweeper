@@ -1,8 +1,13 @@
 import express from 'express';
 import { createServer } from 'http';
+import path from 'path';
 import { Server } from 'socket.io';
 
+const port = process.env.PORT || 3000;
+
 const app = express();
+app.use(express.static(path.join(__dirname, 'public')));
+
 const httpServer = createServer(app);
 
 interface RoomClientToServerEvents {
@@ -22,4 +27,6 @@ io.on('connection', (socket) => {
 	});
 });
 
-httpServer.listen(3000, () => { console.log(`Listening on port 3000`); });
+httpServer.listen(port, () => {
+	console.log(`Listening on port ${port}`);
+});
