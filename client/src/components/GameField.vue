@@ -2,6 +2,8 @@
 import { ref } from 'vue';
 import Cell from './Cell.vue';
 import type { GameFieldSettings } from './FieldSettings.vue';
+import { socket } from '@/socket';
+import type { PlayerCursor } from '../../../common/socket-types';
 
 interface CellData {
 	nMinesAround: number;
@@ -19,9 +21,27 @@ const createTableRows = (nRows: number, nCols: number) => Array.from({length: nR
 
 const deepCopy = <T>(obj: T): T => JSON.parse(JSON.stringify(obj));
 
+const splitmix32 = (a: number) => {
+	return () => {
+		a |= 0; a = a + 0x9e3779b9 | 0;
+		let t = a ^ a >>> 16; t = Math.imul(t, 0x21f0aaad);
+			t = t ^ t >>> 15; t = Math.imul(t, 0x735a2d97);
+		return ((t = t ^ t >>> 15) >>> 0) / 4294967296;
+	}
+};
+
+interface ServerPlayerCursor extends PlayerCursor {
+	playerId: string;
+}
+
+let gameField = ref<HTMLElement | null>(null);
+
+let playerCursors = ref<ServerPlayerCursor[]>([]);
+
 let nRows = ref(10);
 let nCols = ref(10);
 let nMines = ref(20);
+let rand = splitmix32(1337);
 
 let useBot = false;
 let botInterval: ReturnType<typeof setInterval> | null = null;
@@ -157,7 +177,7 @@ const generateField = (skipCell: CellData) => {
 	poses.splice(skipIndex, 1);
 
 	for (let i = 0; i < nMines.value; ++i) {
-		let toRemove = (Math.random() * poses.length) | 0;
+		let toRemove = (rand() * poses.length) | 0;
 		let pos = poses.splice(toRemove, 1)[0];
 
 		createMine(table.value[pos[0]][pos[1]]);
@@ -176,7 +196,7 @@ const onGameWin = () => {
 	for (let row of table.value) {
 		for (let cell of row) {
 			if (!cell.isOpen && !cell.isFlag) {
-				onContextmenu(cell);
+				onFlag(cell);
 			}
 		}
 	}
@@ -225,7 +245,7 @@ const openCell = (cell: CellData) => {
 	}
 };
 
-const onContextmenu = (cell: CellData) => {
+const onFlag = (cell: CellData) => {
 	if (gameLose.value || gameWin.value) {
 		return;
 	}
@@ -334,8 +354,8 @@ const botStep = (botParams: BotStepParams) => {
 			return;
 		}
 
-		let row = (Math.random() * nRows.value) | 0;
-		let col = (Math.random() * nCols.value) | 0;
+		let row = (rand() * nRows.value) | 0;
+		let col = (rand() * nCols.value) | 0;
 		botParams.clickCallback(table.value[row][col]);
 		return;
 	}
@@ -490,7 +510,7 @@ const botStep = (botParams: BotStepParams) => {
 			}
 		}
 
-		let index = (Math.random() * poses.length) | 0;
+		let index = (rand() * poses.length) | 0;
 		let pos = poses[index];
 
 		if (botParams.useLog) {
@@ -504,6 +524,19 @@ const botStep = (botParams: BotStepParams) => {
 	if (botParams.allowRestartOnFail) {
 		resetField();
 	}
+};
+
+const updateHighlights = () => {
+	highlightsClick.value = [];
+	highlightsFlag.value = [];
+
+	botStep({
+		clickCallback: (c: CellData) => { highlightsClick.value.push(c); },
+		flagCallback: (c: CellData) => { highlightsFlag.value.push(c); },
+		singleStep: false,
+		allowRandom: false,
+		allowRestartOnFail: false,
+	});
 };
 
 const onReset = () => {
@@ -534,7 +567,7 @@ const onBot = (active: boolean) => {
 		botInterval = setInterval(() => {
 			botStep({
 				clickCallback: onClick,
-				flagCallback: onContextmenu,
+				flagCallback: onFlag,
 				singleStep: true,
 				allowRandom: true,
 				allowRestartOnFail: true,
@@ -543,19 +576,6 @@ const onBot = (active: boolean) => {
 			});
 		}, botStepDelay);
 	}
-};
-
-const updateHighlights = () => {
-	highlightsClick.value = [];
-	highlightsFlag.value = [];
-
-	botStep({
-		clickCallback: (c: CellData) => { highlightsClick.value.push(c); },
-		flagCallback: (c: CellData) => { highlightsFlag.value.push(c); },
-		singleStep: false,
-		allowRandom: false,
-		allowRestartOnFail: false,
-	});
 };
 
 const onHighlight = (active: boolean) => {
@@ -572,9 +592,63 @@ const onSettingsChanged = (settings: GameFieldSettings) => {
 	nCols.value = settings.nCols;
 	nRows.value = settings.nRows;
 	nMines.value = settings.nMines;
+	rand = splitmix32(settings.randomSeed);
 
 	resetField();
 };
+
+const onClientClick = (cell: CellData) => {
+	onClick(cell);
+	socket.emit('click', cell.rowIndex, cell.colIndex);
+}
+
+const onClientFlag = (cell: CellData) => {
+	onFlag(cell);
+	socket.emit('flag', cell.rowIndex, cell.colIndex);
+}
+
+const onServerClick = (row: number, col: number) => {
+	onClick(table.value[row][col]);
+};
+
+const onServerFlag = (row: number, col: number) => {
+	onFlag(table.value[row][col]);
+};
+
+const onClientPointerMove = (e: Event) => {
+	if (gameField.value) {
+		let rect = gameField.value.getBoundingClientRect();
+		socket.emit('pointerMove', { x: (<MouseEvent>e).x - rect.x, y: (<MouseEvent>e).y - rect.y });
+	}
+}
+
+const onServerPointerMove = (playerId: string, cursor: PlayerCursor) => {
+	let found = playerCursors.value.find((c) => c.playerId == playerId);
+
+	if (found) {
+		found.x = cursor.x;
+		found.y = cursor.y;
+	}
+};
+
+const onServerPlayerJoined = (playerId: string) => {
+	playerCursors.value.push({ playerId, x: 0, y: 0 });
+};
+
+const onServerPlayerLeft = (playerId: string) => {
+	let idx = playerCursors.value.findIndex((c) => c.playerId == playerId);
+
+	if (idx !== -1) {
+		playerCursors.value.splice(idx, 1);
+	}
+};
+
+socket.on('click', onServerClick);
+socket.on('flag', onServerFlag);
+socket.on('pointerMove', onServerPointerMove);
+
+socket.on('playerJoined', onServerPlayerJoined);
+socket.on('playerLeft', onServerPlayerLeft);
 
 defineExpose({
 	onReset,
@@ -587,7 +661,10 @@ defineExpose({
 </script>
 
 <template>
-	<div class="game-field" :class="{ 'game-lose': gameLose, 'game-win': gameWin }">
+	<div class="game-field" :class="{ 'game-lose': gameLose, 'game-win': gameWin }" @mousemove="onClientPointerMove" ref="gameField">
+		<div class="player-cursor-wrapper" v-for="cur in playerCursors">
+			<div class="player-cursor" :style="`left: ${cur.x - 3}px; top: ${cur.y}px;`"></div>
+		</div>
 		<div class="row" v-for="row in table">
 			<Cell
 				class="col"
@@ -599,8 +676,8 @@ defineExpose({
 				:isOpen="cell.isOpen"
 				:isHighlightClick="useHighlight && highlightsClick.includes(cell)"
 				:isHighlightFlag="useHighlight && highlightsFlag.includes(cell)"
-				@click="onClick(cell)"
-				@contextmenu.prevent="onContextmenu(cell)" />
+				@click="onClientClick(cell)"
+				@contextmenu.prevent="onClientFlag(cell)" />
 		</div>
 	</div>
 </template>
@@ -616,5 +693,18 @@ defineExpose({
 	height: 50px;
 	margin: 2px;
 	display: inline-block;
+}
+.player-cursor-wrapper {
+	position: relative;
+}
+.player-cursor {
+	background-image: url("/cursor.svg");
+	background-size: 30px;
+	background-repeat: no-repeat;
+	background-position: center;
+	width: 30px;
+	height: 30px;
+	position: absolute;
+	z-index: 1;
 }
 </style>

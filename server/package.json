@@ -1,6 +1,6 @@
 {
 	"scripts": {
-		"dev": "npx tsc-watch --onSuccess \"node dist/index.js\"",
+		"dev": "npx tsc-watch --onSuccess \"node dist/server/src/index.js\"",
 		"build": "npx tsc"
 	},
 	"dependencies": {

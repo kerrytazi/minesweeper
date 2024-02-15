@@ -3,14 +3,38 @@ import { ref } from 'vue';
 import Controls from './components/Controls.vue';
 import GameField from './components/GameField.vue';
 import FieldSettings from './components/FieldSettings.vue';
-import { socket } from '@/socket';
+import { socket } from './socket';
+
+const dec2hex = (dec: number) => {
+	return dec.toString(16).padStart(2, "0");
+};
+
+const generateId = (len: number) => {
+	var arr = new Uint8Array(len / 2);
+	window.crypto.getRandomValues(arr);
+	return Array.from(arr, dec2hex).join('');
+};
+
+const createNewRoom = () => {
+	let roomId = generateId(16);
+	console.log(roomId);
+	socket.emit('createRoom', roomId);
+};
 
 socket.on('connect', () => {
-	socket.emit('ping', 'hello');
+	let url = new URL(window.location.toString());
+
+	if (url.pathname === '/join' && url.searchParams.has('id')) {
+		socket.emit('joinRoom', url.searchParams.get('id')!);
+	} else {
+		createNewRoom();
+	}
 });
 
-socket.on('pong', (arg: string) => {
-	console.log(arg);
+socket.on('joinError', () => {
+	console.log("Error: Can't join room. Creating a new one.");
+	window.location.href = window.location.origin;
+	createNewRoom();
 });
 
 const gameField = ref<typeof GameField | null>(null);

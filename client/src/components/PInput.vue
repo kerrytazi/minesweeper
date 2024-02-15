@@ -13,12 +13,11 @@ const props = withDefaults(defineProps<{
 	height: '50px',
 });
 
-const emits = defineEmits<{
+const emit = defineEmits<{
 	input: [e: Event];
 }>();
 
 const focused = ref(false);
-const myValue = ref(props.value);
 
 const beforeinput = (e: Event) => {
 	const newText = (<InputEvent>e).data;
@@ -29,20 +28,19 @@ const beforeinput = (e: Event) => {
 };
 
 const input = (e: Event) => {
-	myValue.value = (<HTMLInputElement>e.target!).value;
-	emits('input', e);
+	emit('input', e);
 };
 </script>
 
 <template>
 	<div class="wrapper">
 		<fieldset>
-			<legend class="placeholder-back" :class="{ nonempty: focused || myValue.length > 0 }" v-text="placeholder"></legend>
-			<div class="placeholder" :class="{ nonempty: focused || myValue.length > 0 }" v-text="placeholder"></div>
+			<legend class="placeholder-back" :class="{ nonempty: focused || value.length > 0 }" v-text="placeholder"></legend>
+			<div class="placeholder" :class="{ nonempty: focused || value.length > 0 }" v-text="placeholder"></div>
 			<input
 			type="text"
 			@beforeinput="beforeinput"
-			:value="myValue"
+			:value="value"
 			@input="input"
 			@focus="focused = true"
 			@blur="focused = false"/>
