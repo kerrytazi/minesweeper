@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import PInput from './PInput.vue';
+import PInput from '@/components/PInput.vue';
 import { socket } from '@/socket';
 
 export interface GameFieldSettings {
@@ -32,6 +32,8 @@ const onClientSettingsChanged = () => {
 	}
 };
 
+setTimeout(() => { onClientSettingsChanged(); }, 0);
+
 const onServerSettingsChanged = (settings: GameFieldSettings) => {
 	nRowsText.value = settings.nRows.toString();
 	nColsText.value = settings.nCols.toString();
@@ -54,7 +56,6 @@ socket.on('settingsChanged', onServerSettingsChanged);
 <style scoped>
 button {
 	font-size: 25px;
-	vertical-align: top;
 }
 .field-settings {
 	padding: 10px;

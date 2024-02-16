@@ -1,19 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import Cell from './Cell.vue';
-import type { GameFieldSettings } from './FieldSettings.vue';
-import { socket } from '@/socket';
-import type { PlayerCursor } from '../../../common/socket-types';
-
-interface CellData {
-	nMinesAround: number;
-	nFlagsAround: number;
-	isMine: boolean;
-	isFlag: boolean;
-	isOpen: boolean;
-	rowIndex: number;
-	colIndex: number;
-}
+import { ref, watch } from 'vue';
+import Cell from '@/components/Cell.vue';
+import type { GameFieldSettings } from '@/components/FieldSettings.vue';
+import { socket, isHost } from '@/socket';
+import type { PlayerCursor, CellData, HistoryItem, SyncData } from '@common/socket-types';
 
 const createDefaultCellData = (row: number, col: number): CellData => ({ nMinesAround: 0, nFlagsAround: 0, isMine: false, isFlag: false, isOpen: false, rowIndex: row, colIndex: col });
 const createTableCols = (row: number, nCols: number) => Array.from({length: nCols}, (_, col) => createDefaultCellData(row, col));
@@ -22,53 +12,58 @@ const createTableRows = (nRows: number, nCols: number) => Array.from({length: nR
 const deepCopy = <T>(obj: T): T => JSON.parse(JSON.stringify(obj));
 
 const splitmix32 = (a: number) => {
-	return () => {
-		a |= 0; a = a + 0x9e3779b9 | 0;
-		let t = a ^ a >>> 16; t = Math.imul(t, 0x21f0aaad);
-			t = t ^ t >>> 15; t = Math.imul(t, 0x735a2d97);
-		return ((t = t ^ t >>> 15) >>> 0) / 4294967296;
-	}
+	return {
+		rand: () => {
+			a |= 0; a = a + 0x9e3779b9 | 0;
+			let t = a ^ a >>> 16; t = Math.imul(t, 0x21f0aaad);
+				t = t ^ t >>> 15; t = Math.imul(t, 0x735a2d97);
+			return ((t = t ^ t >>> 15) >>> 0) / 4294967296;
+		},
+		rand_get: () => a,
+	};
 };
 
 interface ServerPlayerCursor extends PlayerCursor {
 	playerId: string;
 }
 
-let gameField = ref<HTMLElement | null>(null);
+const gameField = ref<HTMLElement | null>(null);
 
-let playerCursors = ref<ServerPlayerCursor[]>([]);
+const playerCursors = ref<ServerPlayerCursor[]>([]);
 
-let nRows = ref(10);
-let nCols = ref(10);
-let nMines = ref(20);
-let rand = splitmix32(1337);
+const nRows = ref(16);
+const nCols = ref(30);
+const nMines = ref(99);
+let { rand, rand_get } = splitmix32(1337);
 
 let useBot = false;
 let botInterval: ReturnType<typeof setInterval> | null = null;
 let botStepDelay = 10;
 
-let useHighlight = ref(false);
+const useHighlight = ref(false);
 const highlightsClick = ref<CellData[]>([]);
 const highlightsFlag = ref<CellData[]>([]);
 
-let generated = ref(false);
-let gameLose = ref(false);
-let gameWin = ref(false);
-let nFlags = ref(0);
-let nOpened = ref(0);
-let table = ref(createTableRows(nRows.value, nCols.value));
+const generated = ref(false);
+const gameLose = ref(false);
+const gameWin = ref(false);
+const nFlags = ref(0);
+const nOpened = ref(0);
+const table = ref(createTableRows(nRows.value, nCols.value));
 
-interface HistoryItem {
-	generated: boolean;
-	gameLose: boolean;
-	gameWin: boolean;
-	nFlags: number;
-	nOpened: number;
-	table: CellData[][];
-}
+let gameStartTime: number | null = null;
 
 let history: HistoryItem[] = [];
 let historyIndex = -1;
+
+const emit = defineEmits<{
+	minesUpdate: [nMines: number];
+	gameStart: [gameStartTime: number | null];
+	gameEnd: [gameEndTime: number | null];
+}>();
+
+watch(nMines, () => { emit('minesUpdate', nMines.value - nFlags.value); });
+watch(nFlags, () => { emit('minesUpdate', nMines.value - nFlags.value); });
 
 const historyPush = () => {
 	if (historyIndex + 1 < history.length) {
@@ -88,6 +83,8 @@ const historyPush = () => {
 };
 
 const historyApply = () => {
+	let gameEnded = gameWin.value || gameLose.value;
+
 	generated.value = deepCopy(history[historyIndex].generated);
 	gameLose.value = deepCopy(history[historyIndex].gameLose);
 	gameWin.value = deepCopy(history[historyIndex].gameWin);
@@ -97,6 +94,10 @@ const historyApply = () => {
 
 	if (useHighlight.value) {
 		updateHighlights();
+	}
+
+	if (gameEnded) {
+		emit('gameEnd', null);
 	}
 }
 
@@ -130,9 +131,9 @@ const resetField = () => {
 	historyIndex = -1;
 	historyPush(); // Empty field
 
-	if (useBot) {
-		console.log(`[bot] reset field`);
-	}
+	gameStartTime = null;
+	emit('gameStart', null);
+	emit('minesUpdate', nMines.value - nFlags.value);
 
 	if (useHighlight.value) {
 		highlightsClick.value = [];
@@ -187,6 +188,8 @@ const generateField = (skipCell: CellData) => {
 const onGameLose = () => {
 	gameLose.value = true;
 
+	emit('gameEnd', performance.now());
+
 	if (useBot) {
 		console.log(`[bot] game lost`);
 	}
@@ -202,6 +205,8 @@ const onGameWin = () => {
 	}
 
 	gameWin.value = true;
+
+	emit('gameEnd', performance.now());
 
 	if (useBot) {
 		console.log(`[bot] game won`);
@@ -312,6 +317,7 @@ const onClick = (cell: CellData) => {
 			}
 
 			if (changed) {
+				checkWin();
 				historyPush();
 			}
 
@@ -327,6 +333,10 @@ const onClick = (cell: CellData) => {
 		openCell(cell);
 		checkWin();
 		historyPush();
+
+		gameStartTime = performance.now();
+		emit('gameStart', gameStartTime);
+		emit('minesUpdate', nMines.value - nFlags.value);
 	}
 };
 
@@ -343,6 +353,10 @@ interface BotStepParams {
 const botStep = (botParams: BotStepParams) => {
 	if (gameLose.value || gameWin.value) {
 		if (gameLose.value && botParams.allowRestartOnFail) {
+			if (botParams.useLog) {
+				console.log(`[${botParams.logPrefix??'bot'}] reset field`);
+			}
+
 			resetField();
 		}
 
@@ -522,6 +536,10 @@ const botStep = (botParams: BotStepParams) => {
 	}
 
 	if (botParams.allowRestartOnFail) {
+		if (botParams.useLog) {
+			console.log(`[${botParams.logPrefix??'bot'}] reset field`);
+		}
+
 		resetField();
 	}
 };
@@ -592,7 +610,7 @@ const onSettingsChanged = (settings: GameFieldSettings) => {
 	nCols.value = settings.nCols;
 	nRows.value = settings.nRows;
 	nMines.value = settings.nMines;
-	rand = splitmix32(settings.randomSeed);
+	({ rand, rand_get } = splitmix32(1337));
 
 	resetField();
 };
@@ -615,10 +633,20 @@ const onServerFlag = (row: number, col: number) => {
 	onFlag(table.value[row][col]);
 };
 
+let lastPlayerCursor: PlayerCursor | null = null;
+
+setInterval(() => {
+	if (lastPlayerCursor) {
+		socket.emit('pointerMove', lastPlayerCursor);
+		lastPlayerCursor = null;
+	}
+}, 10);
+
 const onClientPointerMove = (e: Event) => {
 	if (gameField.value) {
 		let rect = gameField.value.getBoundingClientRect();
-		socket.emit('pointerMove', { x: (<MouseEvent>e).x - rect.x, y: (<MouseEvent>e).y - rect.y });
+		lastPlayerCursor = { x: (<MouseEvent>e).x - rect.x, y: (<MouseEvent>e).y - rect.y };
+		// socket.emit('pointerMove', { x: (<MouseEvent>e).x - rect.x, y: (<MouseEvent>e).y - rect.y });
 	}
 }
 
@@ -633,6 +661,10 @@ const onServerPointerMove = (playerId: string, cursor: PlayerCursor) => {
 
 const onServerPlayerJoined = (playerId: string) => {
 	playerCursors.value.push({ playerId, x: 0, y: 0 });
+
+	if (isHost.value) {
+		onClientSync();
+	}
 };
 
 const onServerPlayerLeft = (playerId: string) => {
@@ -643,12 +675,43 @@ const onServerPlayerLeft = (playerId: string) => {
 	}
 };
 
+const onClientSync = () => {
+	socket.emit('sync', {
+		history: deepCopy(history),
+		historyIndex: deepCopy(historyIndex),
+		settings: {
+			nRows: nRows.value,
+			nCols: nCols.value,
+			nMines: nMines.value,
+			randomSeed: rand_get(),
+		},
+		gameTime: gameStartTime ? performance.now() - gameStartTime : null,
+	});
+};
+
+const onServerSync = (data: SyncData) => {
+	history = data.history;
+	historyIndex = data.historyIndex;
+
+	nRows.value = data.settings.nRows;
+	nCols.value = data.settings.nCols;
+	nMines.value = data.settings.nMines;
+	({ rand, rand_get } = splitmix32(data.settings.randomSeed));
+
+	gameStartTime = data.gameTime ? performance.now() - data.gameTime : null;
+	emit('gameStart', gameStartTime);
+
+	historyApply();
+};
+
 socket.on('click', onServerClick);
 socket.on('flag', onServerFlag);
 socket.on('pointerMove', onServerPointerMove);
 
 socket.on('playerJoined', onServerPlayerJoined);
 socket.on('playerLeft', onServerPlayerLeft);
+
+socket.on('sync', onServerSync)
 
 defineExpose({
 	onReset,
@@ -661,7 +724,16 @@ defineExpose({
 </script>
 
 <template>
-	<div class="game-field" :class="{ 'game-lose': gameLose, 'game-win': gameWin }" @mousemove="onClientPointerMove" ref="gameField">
+	<div
+		class="game-field"
+		:class="{
+			'game-lose': gameLose,
+			'game-win': gameWin,
+		}"
+		@mousemove="onClientPointerMove"
+		ref="gameField"
+		@contextmenu.prevent=""
+	>
 		<div class="player-cursor-wrapper" v-for="cur in playerCursors">
 			<div class="player-cursor" :style="`left: ${cur.x - 3}px; top: ${cur.y}px;`"></div>
 		</div>

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import "/ChakraPetch-Bold.ttf";
 
 const props = defineProps<{
 	nMinesAround: number;
@@ -34,7 +33,6 @@ const props = defineProps<{
 }
 .cell {
 	background-color: var(--cell-color-default);
-	vertical-align: top;
 }
 .cell:hover {
 	background-color: var(--cell-color-hover);
@@ -42,7 +40,6 @@ const props = defineProps<{
 .cell-open {
 	background-color: var(--cell-color-open);
 	font-size: 35px;
-	font-family: "Chakra Petch";
 	text-align: center;
 	line-height: 50px;
 }

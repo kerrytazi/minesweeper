@@ -7,7 +7,7 @@ RUN npm install
 COPY server .
 COPY common ../common
 RUN npm run build
-WORKDIR /appbuild/server/dist/server/src
+WORKDIR /appbuild/server/dist
 COPY server/package.json server/package-lock.json .
 RUN npm install --omit=dev
 
@@ -27,7 +27,7 @@ EXPOSE 80
 RUN mkdir -p /app
 RUN mkdir -p /app/public
 WORKDIR /app
-COPY --from=builder-server /appbuild/server/dist/server/src .
+COPY --from=builder-server /appbuild/server/dist .
 COPY --from=builder-client /appbuild/client/dist ./public
 
 CMD ["node", "index.js"]

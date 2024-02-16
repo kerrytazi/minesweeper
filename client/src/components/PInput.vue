@@ -7,10 +7,12 @@ const props = withDefaults(defineProps<{
 	inputMask?: RegExp;
 	width?: string;
 	height?: string;
+	readonly?: boolean;
 }>(), {
 	value: '',
 	width: '320px',
 	height: '50px',
+	readonly: false,
 });
 
 const emit = defineEmits<{
@@ -38,12 +40,13 @@ const input = (e: Event) => {
 			<legend class="placeholder-back" :class="{ nonempty: focused || value.length > 0 }" v-text="placeholder"></legend>
 			<div class="placeholder" :class="{ nonempty: focused || value.length > 0 }" v-text="placeholder"></div>
 			<input
-			type="text"
-			@beforeinput="beforeinput"
-			:value="value"
-			@input="input"
-			@focus="focused = true"
-			@blur="focused = false"/>
+				type="text"
+				@beforeinput="beforeinput"
+				:value="value"
+				@input="input"
+				@focus="focused = true"
+				@blur="focused = false"
+				:readonly="readonly"/>
 		</fieldset>
 	</div>
 </template>
@@ -71,7 +74,6 @@ fieldset {
 	color: rgba(0, 0, 0, 0);
 	margin-left: calc(var(--pinput-height) / 8);
 	height: 0;
-	transition: all 0.2s;
 
 	-webkit-user-select: none;
 	-ms-user-select: none;
@@ -86,7 +88,7 @@ fieldset {
 	position: absolute;
 	color: gray;
 	font-size: calc(var(--pinput-height) / 2);
-	transition: all 0.2s;
+	transition: margin 0.2s, font-size 0.2s;
 	pointer-events: none;
 	margin: var(--input-text-margin);
 }

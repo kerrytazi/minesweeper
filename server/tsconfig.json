@@ -6,7 +6,12 @@
 		"removeComments": true,
 		"preserveConstEnums": true,
 		"outDir": "dist",
-		"sourceMap": true
+		"sourceMap": true,
+
+		"paths": {
+			"@/*": ["./*"],
+			"@common/*": ["../common/*"]
+		}
 	},
-	"include": [ "src/index.ts" ]
+	"include": [ "./src/**/*" ]
 }

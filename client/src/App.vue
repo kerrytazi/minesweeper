@@ -1,56 +1,62 @@
 <script setup lang="ts">
+import "/ChakraPetch-Bold.ttf";
 import { ref } from 'vue';
-import Controls from './components/Controls.vue';
-import GameField from './components/GameField.vue';
-import FieldSettings from './components/FieldSettings.vue';
-import { socket } from './socket';
+import Controls from '@/components/Controls.vue';
+import GameField from '@/components/GameField.vue';
+import FieldSettings from '@/components/FieldSettings.vue';
+import JoinLink from '@/components/JoinLink.vue';
+import UserSettings from "./components/UserSettings.vue";
 
-const dec2hex = (dec: number) => {
-	return dec.toString(16).padStart(2, "0");
-};
+const themeId = ref(JSON.parse(localStorage.getItem('darkTheme') ?? 'false') ? 1 : 0);
 
-const generateId = (len: number) => {
-	var arr = new Uint8Array(len / 2);
-	window.crypto.getRandomValues(arr);
-	return Array.from(arr, dec2hex).join('');
-};
+interface Theme {
+	'app-color': string;
+	'font-color': string;
+	'cell-color-default': string;
+	'cell-color-hover': string;
+	'cell-color-open': string;
+}
 
-const createNewRoom = () => {
-	let roomId = generateId(16);
-	console.log(roomId);
-	socket.emit('createRoom', roomId);
-};
-
-socket.on('connect', () => {
-	let url = new URL(window.location.toString());
-
-	if (url.pathname === '/join' && url.searchParams.has('id')) {
-		socket.emit('joinRoom', url.searchParams.get('id')!);
-	} else {
-		createNewRoom();
+const themes: Theme[] = [
+	{ // light
+		'app-color': 'rgb(240 240 240)',
+		'font-color': 'rgb(70 70 70)',
+		'cell-color-default': 'rgb(160 160 160)',
+		'cell-color-hover': 'rgb(140 140 140)',
+		'cell-color-open': 'rgb(220 220 220)',
+	},
+	{ // dark
+		'app-color': 'rgb(70 70 70)',
+		'font-color': 'rgb(240 240 240)',
+		'cell-color-default': 'rgb(110 110 110)',
+		'cell-color-hover': 'rgb(160, 160 160)',
+		'cell-color-open': 'rgb(180 180 180)',
 	}
-});
+];
 
-socket.on('joinError', () => {
-	console.log("Error: Can't join room. Creating a new one.");
-	window.location.href = window.location.origin;
-	createNewRoom();
-});
-
+const controls = ref<typeof Controls | null>(null);
 const gameField = ref<typeof GameField | null>(null);
 </script>
 
 <template>
-	<div class="app-wrapper theme-light">
+	<div class="app-wrapper">
+		<UserSettings
+			@onDarkTheme="(active: boolean) => { themeId = active ? 1 : 0; }"/>
 		<Controls
+			ref="controls"
 			@reset="gameField?.onReset"
 			@historyBack="gameField?.onHistoryBack"
 			@historyForward="gameField?.onHistoryForward"
 			@bot="gameField?.onBot"
 			@highlight="gameField?.onHighlight"/>
-		<GameField ref="gameField" />
+		<GameField
+			ref="gameField"
+			@minesUpdate="controls?.onMinesUpdated"
+			@gameStart="controls?.onGameStarted"
+			@gameEnd="controls?.onGameEnded" />
 		<FieldSettings
 			@onSettingsChanged="gameField?.onSettingsChanged"/>
+		<JoinLink />
 	</div>
 </template>
 
@@ -66,19 +72,45 @@ body {
 	padding: 0;
 	border: 0;
 	font-size: 0;
+	font-family: "Chakra Petch";
 	white-space: nowrap;
 }
 .app-wrapper {
+	--app-color: v-bind(themes[themeId]['app-color']);
+	--font-color: v-bind(themes[themeId]['font-color']);
+	--cell-color-default: v-bind(themes[themeId]['cell-color-default']);
+	--cell-color-hover: v-bind(themes[themeId]['cell-color-hover']);
+	--cell-color-open: v-bind(themes[themeId]['cell-color-open']);
+
 	width: 100vw;
 	height: 100vh;
 	display: flex;
 	justify-content: center;
 	align-items: center;
 	flex-direction: column;
+	background-color: var(--app-color);
+	color: var(--font-color);
 }
-.theme-light {
-	--cell-color-default: rgb(160, 160, 160);
-	--cell-color-hover: rgb(140, 140, 140);
-	--cell-color-open: rgb(220, 220, 220);
+button {
+	background-color: var(--app-color);
+	border-color: var(--font-color);
+	color: var(--font-color);
+
+	margin: calc(50px / 16);
+	height: 42.95px;
+	padding: 6.25px;
+}
+input {
+	background-color: var(--app-color);
+	color: var(--font-color);
+}
+fieldset {
+	border-color: var(--font-color) !important;
+}
+.placeholder {
+	color: var(--font-color) !important;
+}
+* {
+	vertical-align: top;
 }
 </style>

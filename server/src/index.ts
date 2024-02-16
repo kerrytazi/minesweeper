@@ -2,7 +2,7 @@ import express from 'express';
 import { createServer } from 'http';
 import path from 'path';
 import { Server, Socket } from 'socket.io';
-import type { GameFieldSettings, PlayerCursor, RoomClientToServerEvents, RoomServerToClientEvents } from '../../common/socket-types';
+import type { GameFieldSettings, PlayerCursor, SyncData, RoomClientToServerEvents, RoomServerToClientEvents } from '@common/socket-types';
 
 const port = process.env.PORT || 3000;
 
@@ -37,6 +37,7 @@ io.on('connection', (socket) => {
 		socket.join(roomId);
 		socketToRooms.set(socket, roomId);
 		roomToSockets.set(roomId, [socket]);
+		socket.emit('reset');
 	});
 
 	socket.on('joinRoom', (roomId: string) => {
@@ -59,9 +60,18 @@ io.on('connection', (socket) => {
 	socket.on('disconnecting', () => {
 		let roomId = socketToRooms.get(socket);
 		socketToRooms.delete(socket);
-		roomToSockets.set(roomId, roomToSockets.get(roomId).filter((s) => s !== socket));
+
+		let newSockets = roomToSockets.get(roomId).filter((s) => s !== socket);
+		if (newSockets.length === 0) {
+			roomToSockets.delete(roomId);
+		} else {
+			roomToSockets.set(roomId, roomToSockets.get(roomId).filter((s) => s !== socket));
+		}
+
 		socket.to(roomId).emit('playerLeft', socket.id);
 	});
+
+	socket.on('sync', (data: SyncData) => { socket.to(socketToRooms.get(socket)).emit('sync', data); });
 });
 
 httpServer.listen(port, () => {
