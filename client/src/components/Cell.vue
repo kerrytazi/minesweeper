@@ -26,11 +26,6 @@ const props = defineProps<{
 </template>
 
 <style scoped>
-@font-face {
-	font-family: "Chakra Petch";
-	src: url("ChakraPetch-Bold.ttf");
-	font-weight: bold;
-}
 .cell {
 	background-color: var(--cell-color-default);
 }

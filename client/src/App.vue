@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import "/ChakraPetch-Bold.ttf";
 import { ref } from 'vue';
 import Controls from '@/components/Controls.vue';
 import GameField from '@/components/GameField.vue';
@@ -61,6 +60,11 @@ const gameField = ref<typeof GameField | null>(null);
 </template>
 
 <style>
+@font-face {
+	font-family: "Chakra Petch";
+	src: url("assets/ChakraPetch-Bold.ttf");
+	font-weight: bold;
+}
 input {
 	padding: 0;
 	margin: 0;
