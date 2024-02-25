@@ -47,12 +47,14 @@ const gameField = ref<typeof GameField | null>(null);
 			@historyBack="gameField?.onHistoryBack"
 			@historyForward="gameField?.onHistoryForward"
 			@autosolver="gameField?.onAutoSolver"
-			@highlight="gameField?.onHighlight"/>
+			@highlight="gameField?.onHighlight"
+			@editor="gameField?.onEditor"/>
 		<GameField
 			ref="gameField"
 			@minesUpdate="controls?.onMinesUpdated"
 			@gameStart="controls?.onGameStarted"
-			@gameEnd="controls?.onGameEnded" />
+			@gameEnd="controls?.onGameEnded"
+			@syncControls="controls?.onSync" />
 		<FieldSettings
 			@onSettingsChanged="gameField?.onSettingsChanged"/>
 		<JoinLink />

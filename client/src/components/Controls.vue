@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { onBeforeUpdate, onUpdated, ref } from 'vue';
+import { ref } from 'vue';
 import { socket } from '@/socket';
 import PInput from './PInput.vue';
+import type { ControlsData } from '@common/socket-types';
 
 const autosolver = ref(false);
 const highlight = ref(false);
+const editor = ref(false);
 
 const emit = defineEmits<{
 	reset: [];
@@ -12,6 +14,7 @@ const emit = defineEmits<{
 	historyForward: [];
 	autosolver: [active: boolean];
 	highlight: [active: boolean];
+	editor: [active: boolean];
 }>();
 
 const onClientReset = () => {
@@ -63,11 +66,23 @@ const onServerHighlight = (active: boolean) => {
 	emit('highlight', active);
 };
 
+const onClientEditor = (e: Event) => {
+	let active = (<HTMLInputElement>e.target).checked;
+	emit('editor', active);
+	socket.emit('editor', active);
+};
+
+const onServerEditor = (active: boolean) => {
+	editor.value = active;
+	emit('editor', active);
+};
+
 socket.on('reset', onServerReset);
 socket.on('historyBack', onServerHistoryBack);
 socket.on('historyForward', onServerHistoryForward);
 socket.on('autosolver', onServerAutoSolver);
 socket.on('highlight', onServerHighlight);
+socket.on('editor', onServerEditor);
 
 const nGameFieldMines = ref(0);
 const gameFieldStartTime = ref<number | null>(null);
@@ -102,10 +117,17 @@ const onGameEnded = (gameEndTime: number | null) => {
 	updateTimer(performance.now());
 };
 
+const onSync = (controls: ControlsData) => {
+	autosolver.value = controls.autosolver;
+	highlight.value = controls.highlight;
+	editor.value = controls.editor;
+};
+
 defineExpose({
 	onMinesUpdated,
 	onGameStarted,
 	onGameEnded,
+	onSync,
 });
 </script>
 
@@ -116,10 +138,12 @@ defineExpose({
 		<button @click="onClientReset">Reset</button>
 		<button @click="onClientHistoryBack">Back</button>
 		<button @click="onClientHistoryForward">Forward</button>
-		<label for="checkboxauto-solver">AutoSolver</label>
+		<label for="checkboxauto-solver" title="Bot that automatically open/flag cells.&#010;Uses logic of 'Help highlight'.">AutoSolver</label>
 		<input id="checkboxauto-solver" type="checkbox" @click="onClientAutoSolver" v-model="autosolver" />
-		<label for="checkbox-highlight">Help highlight</label>
+		<label for="checkbox-highlight" title="Blue cells - should be flagged. Obvious mine.&#010;Green cells - should be opened. Obvious clear cells.">Help highlight</label>
 		<input id="checkbox-highlight" type="checkbox" @click="onClientHighlight" v-model="highlight" />
+		<label for="checkbox-editor" title="LMB - open/close cell.&#010;Shift+LMB - set/unset mine in cell.&#010;RMB - flag/unflag cell.&#010;digit/numpad - set 'flags around'. '0' to clear.">Editor mode</label>
+		<input id="checkbox-editor" type="checkbox" @click="onClientEditor" v-model="editor" />
 	</div>
 </template>
 

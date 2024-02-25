@@ -29,8 +29,8 @@ io.on('connection', (socket) => {
 	socket.on('autosolver', (active: boolean) => { socket.to(socketToRooms.get(socket)).emit('autosolver', active); });
 	socket.on('highlight', (active: boolean) => { socket.to(socketToRooms.get(socket)).emit('highlight', active); });
 	socket.on('settingsChanged', (settings: GameFieldSettings) => { socket.to(socketToRooms.get(socket)).emit('settingsChanged', settings); });
-	socket.on('click', (row: number, col: number) => { socket.to(socketToRooms.get(socket)).emit('click', row, col); });
-	socket.on('flag', (row: number, col: number) => { socket.to(socketToRooms.get(socket)).emit('flag', row, col); });
+	socket.on('click', (row: number, col: number, shift: boolean) => { socket.to(socketToRooms.get(socket)).emit('click', row, col, shift); });
+	socket.on('flag', (row: number, col: number, shift: boolean) => { socket.to(socketToRooms.get(socket)).emit('flag', row, col, shift); });
 	socket.on('pointerMove', (cursor: PlayerCursor) => { socket.to(socketToRooms.get(socket)).emit('pointerMove', socket.id, cursor); });
 
 	socket.on('createRoom', (roomId: string) => {

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, onBeforeUnmount } from 'vue';
 import Cell from '@/components/Cell.vue';
 import type { GameFieldSettings } from '@/components/FieldSettings.vue';
 import { socket, isHost } from '@/socket';
-import type { PlayerCursor, CellData, HistoryItem, SyncData } from '@common/socket-types';
+import type { PlayerCursor, CellData, HistoryItem, SyncData, ControlsData } from '@common/socket-types';
 
 const createDefaultCellData = (row: number, col: number): CellData => ({ nMinesAround: 0, nFlagsAround: 0, isMine: false, isFlag: false, isOpen: false, rowIndex: row, colIndex: col });
 const createTableCols = (row: number, nCols: number) => Array.from({length: nCols}, (_, col) => createDefaultCellData(row, col));
@@ -45,7 +45,9 @@ const useHighlight = ref(false);
 const highlightsClick = ref<CellData[]>([]);
 const highlightsFlag = ref<CellData[]>([]);
 
-const generated = ref(false);
+const useEditor = ref(false);
+
+let generated = false;
 const gameLose = ref(false);
 const gameWin = ref(false);
 const nFlags = ref(0);
@@ -61,6 +63,7 @@ const emit = defineEmits<{
 	minesUpdate: [nMines: number];
 	gameStart: [gameStartTime: number | null];
 	gameEnd: [gameEndTime: number | null];
+	syncControls: [controls: ControlsData];
 }>();
 
 watch(nMines, () => { emit('minesUpdate', nMines.value - nFlags.value); });
@@ -72,7 +75,7 @@ const historyPush = () => {
 	}
 
 	history.push({
-		generated: deepCopy(generated.value),
+		generated: deepCopy(generated),
 		gameLose: deepCopy(gameLose.value),
 		gameWin: deepCopy(gameWin.value),
 		nFlags: deepCopy(nFlags.value),
@@ -86,7 +89,7 @@ const historyPush = () => {
 const historyApply = () => {
 	let gameEnded = gameWin.value || gameLose.value;
 
-	generated.value = deepCopy(history[historyIndex].generated);
+	generated = deepCopy(history[historyIndex].generated);
 	gameLose.value = deepCopy(history[historyIndex].gameLose);
 	gameWin.value = deepCopy(history[historyIndex].gameWin);
 	nFlags.value = deepCopy(history[historyIndex].nFlags);
@@ -121,7 +124,7 @@ const historyForward = () => {
 };
 
 const resetField = () => {
-	generated.value = false;
+	generated = false;
 	gameLose.value = false;
 	gameWin.value = false;
 	nFlags.value = 0;
@@ -200,7 +203,7 @@ const onGameWin = () => {
 	for (let row of table.value) {
 		for (let cell of row) {
 			if (!cell.isOpen && !cell.isFlag) {
-				onFlag(cell);
+				onFlag(cell, false);
 			}
 		}
 	}
@@ -251,12 +254,14 @@ const openCell = (cell: CellData) => {
 	}
 };
 
-const onFlag = (cell: CellData) => {
-	if (gameLose.value || gameWin.value) {
-		return;
+const onFlag = (cell: CellData, shift: boolean) => {
+	if (!useEditor.value) {
+		if (gameLose.value || gameWin.value) {
+			return;
+		}
 	}
 
-	if (generated.value) {
+	if (generated || useEditor.value) {
 		if (cell.isOpen) {
 			return;
 		}
@@ -285,12 +290,24 @@ const checkWin = () => {
 	}
 };
 
-const onClick = (cell: CellData) => {
+const onClick = (cell: CellData, shift: boolean) => {
+	if (useEditor.value) {
+		if (shift) {
+			cell.isMine = !cell.isMine;
+		} else {
+			cell.isOpen = !cell.isOpen;
+		}
+
+		historyPush();
+		updateHighlights();
+		return;
+	}
+
 	if (gameLose.value || gameWin.value) {
 		return;
 	}
 
-	if (generated.value) {
+	if (generated) {
 		if (cell.isFlag) {
 			return;
 		}
@@ -330,7 +347,7 @@ const onClick = (cell: CellData) => {
 		historyPush();
 	} else {
 		generateField(cell);
-		generated.value = true;
+		generated = true;
 		openCell(cell);
 		checkWin();
 		historyPush();
@@ -339,6 +356,17 @@ const onClick = (cell: CellData) => {
 		emit('gameStart', gameStartTime);
 		emit('minesUpdate', nMines.value - nFlags.value);
 	}
+};
+
+const onKeydown = (cell: CellData, num: number) => {
+	if (!useEditor.value) {
+		return;
+	}
+
+	cell.nMinesAround = num;
+
+	historyPush();
+	updateHighlights();
 };
 
 interface AutoSolverStepParams {
@@ -352,27 +380,29 @@ interface AutoSolverStepParams {
 }
 
 const autosolverStep = (autosolverParams: AutoSolverStepParams) => {
-	if (gameLose.value || gameWin.value) {
-		if (gameLose.value && autosolverParams.allowRestartOnFail) {
-			if (autosolverParams.useLog) {
-				console.log(`[${autosolverParams.logPrefix??'autosolver'}] reset field`);
+	if (!useEditor.value) {
+		if (gameLose.value || gameWin.value) {
+			if (gameLose.value && autosolverParams.allowRestartOnFail) {
+				if (autosolverParams.useLog) {
+					console.log(`[${autosolverParams.logPrefix??'autosolver'}] reset field`);
+				}
+				
+				resetField();
 			}
-
-			resetField();
-		}
-
-		return;
-	}
-
-	if (!generated.value) {
-		if (!autosolverParams.allowRandom) {
+			
 			return;
 		}
-
-		let row = (rand() * nRows.value) | 0;
-		let col = (rand() * nCols.value) | 0;
-		autosolverParams.clickCallback(table.value[row][col]);
-		return;
+		
+		if (!generated) {
+			if (!autosolverParams.allowRandom) {
+				return;
+			}
+			
+			let row = (rand() * nRows.value) | 0;
+			let col = (rand() * nCols.value) | 0;
+			autosolverParams.clickCallback(table.value[row][col]);
+			return;
+		}
 	}
 
 	{
@@ -532,7 +562,7 @@ const autosolverStep = (autosolverParams: AutoSolverStepParams) => {
 			console.log(`[${autosolverParams.logPrefix??'autosolver'}] random click {${pos[0]} ${pos[1]}}`);
 		}
 
-		onClick(table.value[pos[0]][pos[1]]);
+		onClick(table.value[pos[0]][pos[1]], false);
 		return;
 	}
 
@@ -585,8 +615,8 @@ const onAutoSolver = (active: boolean) => {
 	if (active) {
 		autosolverInterval = setInterval(() => {
 			autosolverStep({
-				clickCallback: onClick,
-				flagCallback: onFlag,
+				clickCallback: (cell: CellData) => { onClick(cell, false); },
+				flagCallback: (cell: CellData) => { onFlag(cell, false); },
 				singleStep: true,
 				allowRandom: true,
 				allowRestartOnFail: true,
@@ -607,6 +637,20 @@ const onHighlight = (active: boolean) => {
 	updateHighlights();
 };
 
+const onEditor = (active: boolean) => {
+	if (useEditor.value === active) {
+		return;
+	}
+
+	useEditor.value = active;
+
+	if (useEditor.value) {
+		document.addEventListener('keydown', onClientKeydown);
+	} else {
+		document.removeEventListener('keydown', onClientKeydown);
+	}
+};
+
 const onSettingsChanged = (settings: GameFieldSettings) => {
 	nCols.value = settings.nCols;
 	nRows.value = settings.nRows;
@@ -616,22 +660,57 @@ const onSettingsChanged = (settings: GameFieldSettings) => {
 	resetField();
 };
 
-const onClientClick = (cell: CellData) => {
-	onClick(cell);
-	socket.emit('click', cell.rowIndex, cell.colIndex);
+const onClientClick = (cell: CellData, e: MouseEvent) => {
+	onClick(cell, e.shiftKey);
+	socket.emit('click', cell.rowIndex, cell.colIndex, e.shiftKey);
 }
 
-const onClientFlag = (cell: CellData) => {
-	onFlag(cell);
-	socket.emit('flag', cell.rowIndex, cell.colIndex);
+const onClientFlag = (cell: CellData, e: MouseEvent) => {
+	onFlag(cell, e.shiftKey);
+	socket.emit('flag', cell.rowIndex, cell.colIndex, e.shiftKey);
 }
 
-const onServerClick = (row: number, col: number) => {
-	onClick(table.value[row][col]);
+const onServerClick = (row: number, col: number, shift: boolean) => {
+	onClick(table.value[row][col], shift);
 };
 
-const onServerFlag = (row: number, col: number) => {
-	onFlag(table.value[row][col]);
+const onServerFlag = (row: number, col: number, shift: boolean) => {
+	onFlag(table.value[row][col], shift);
+};
+
+const onClientKeydown = (e: KeyboardEvent) => {
+	if (!useEditor.value) {
+		return;
+	}
+
+	let num = parseInt(e.key);
+
+	if (isNaN(num)) {
+		return;
+	}
+
+	let elements = document.querySelectorAll(':hover');
+
+	if (elements.length === 0) {
+		return;
+	}
+
+	let domCol = elements[elements.length - 1];
+
+	if (!domCol.classList.contains('col')) {
+		return;
+	}
+
+	let domRow = domCol.parentElement!;
+	let domField = domRow.parentElement!;
+
+	let col = Array.from(domRow.children).indexOf(domCol);
+	let row = Array.from(domField.children).indexOf(domRow);
+
+	onKeydown(table.value[row][col], num);
+};
+
+const onServerKeydown = () => {
 };
 
 let lastPlayerCursor: PlayerCursor | null = null;
@@ -694,6 +773,11 @@ const onClientSync = () => {
 			randomSeed: rand_get(),
 		},
 		gameTime: gameStartTime ? performance.now() - gameStartTime : null,
+		controls: {
+			autosolver: useAutoSolver,
+			highlight: useHighlight.value,
+			editor: useEditor.value,
+		},
 	});
 };
 
@@ -709,11 +793,18 @@ const onServerSync = (data: SyncData) => {
 	gameStartTime = data.gameTime ? performance.now() - data.gameTime : null;
 	emit('gameStart', gameStartTime);
 
+	useAutoSolver = data.controls.autosolver;
+	useHighlight.value = data.controls.highlight;
+	useEditor.value = data.controls.editor;
+
+	emit('syncControls', data.controls);
+
 	historyApply();
 };
 
 socket.on('click', onServerClick);
 socket.on('flag', onServerFlag);
+//socket.on('keydown', onServerKeydown);
 socket.on('pointerMove', onServerPointerMove);
 
 socket.on('playerJoined', onServerPlayerJoined);
@@ -727,7 +818,12 @@ defineExpose({
 	onHistoryForward,
 	onAutoSolver,
 	onHighlight,
+	onEditor,
 	onSettingsChanged,
+});
+
+onBeforeUnmount(() => {
+	document.removeEventListener('keydown', onClientKeydown);
 });
 </script>
 
@@ -750,14 +846,14 @@ defineExpose({
 				class="col"
 				v-for="cell in row"
 				:nMinesAround="cell.nMinesAround"
-				:isMine="gameLose && cell.isMine && !cell.isFlag"
+				:isMine="(gameLose || useEditor) && cell.isMine && !cell.isFlag"
 				:isFlag="cell.isFlag"
 				:isWrongFlag="gameLose && cell.isFlag && !cell.isMine"
 				:isOpen="cell.isOpen"
 				:isHighlightClick="useHighlight && highlightsClick.includes(cell)"
 				:isHighlightFlag="useHighlight && highlightsFlag.includes(cell)"
-				@click="onClientClick(cell)"
-				@contextmenu.prevent="onClientFlag(cell)" />
+				@click="onClientClick(cell, $event)"
+				@contextmenu.prevent="onClientFlag(cell, $event)" />
 		</div>
 	</div>
 </template>

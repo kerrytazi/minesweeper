@@ -29,11 +29,18 @@ export interface PlayerCursor {
 	y: number;
 }
 
+export interface ControlsData {
+	autosolver: boolean;
+	highlight: boolean;
+	editor: boolean;
+}
+
 export interface SyncData {
 	history: HistoryItem[];
 	historyIndex: number;
 	settings: GameFieldSettings;
 	gameTime: number | null;
+	controls: ControlsData;
 }
 
 export interface RoomClientToServerEvents {
@@ -42,11 +49,12 @@ export interface RoomClientToServerEvents {
 	historyForward: () => void;
 	autosolver: (active: boolean) => void;
 	highlight: (active: boolean) => void;
+	editor: (active: boolean) => void;
 
 	settingsChanged: (settings: GameFieldSettings) => void;
 
-	click: (row: number, col: number) => void;
-	flag: (row: number, col: number) => void;
+	click: (row: number, col: number, shift: boolean) => void;
+	flag: (row: number, col: number, shift: boolean) => void;
 	pointerMove: (cursor: PlayerCursor) => void;
 
 	createRoom: (roomId: string) => void;
@@ -61,11 +69,12 @@ export interface RoomServerToClientEvents {
 	historyForward: () => void;
 	autosolver: (active: boolean) => void;
 	highlight: (active: boolean) => void;
+	editor: (active: boolean) => void;
 
 	settingsChanged: (settings: GameFieldSettings) => void;
 
-	click: (row: number, col: number) => void;
-	flag: (row: number, col: number) => void;
+	click: (row: number, col: number, shift: boolean) => void;
+	flag: (row: number, col: number, shift: boolean) => void;
 	pointerMove: (playerId: string, cursor: PlayerCursor) => void;
 
 	playerJoined: (playerId: string) => void;
