@@ -38,6 +38,7 @@ let { rand, rand_get } = splitmix32(1337);
 
 let useBot = false;
 let botInterval: ReturnType<typeof setInterval> | null = null;
+let playerCursorInterval: ReturnType<typeof setInterval> | null = null;
 let botStepDelay = 10;
 
 const useHighlight = ref(false);
@@ -635,15 +636,8 @@ const onServerFlag = (row: number, col: number) => {
 
 let lastPlayerCursor: PlayerCursor | null = null;
 
-setInterval(() => {
-	if (lastPlayerCursor) {
-		socket.emit('pointerMove', lastPlayerCursor);
-		lastPlayerCursor = null;
-	}
-}, 10);
-
 const onClientPointerMove = (e: Event) => {
-	if (gameField.value) {
+	if (gameField.value !== null && playerCursorInterval !== null) {
 		let rect = gameField.value.getBoundingClientRect();
 		lastPlayerCursor = { x: (<MouseEvent>e).x - rect.x, y: (<MouseEvent>e).y - rect.y };
 		// socket.emit('pointerMove', { x: (<MouseEvent>e).x - rect.x, y: (<MouseEvent>e).y - rect.y });
@@ -665,6 +659,15 @@ const onServerPlayerJoined = (playerId: string) => {
 	if (isHost.value) {
 		onClientSync();
 	}
+
+	if (playerCursors.value.length === 1) {
+		playerCursorInterval = setInterval(() => {
+			if (lastPlayerCursor) {
+				socket.emit('pointerMove', lastPlayerCursor);
+				lastPlayerCursor = null;
+			}
+		}, 10);
+	}
 };
 
 const onServerPlayerLeft = (playerId: string) => {
@@ -672,6 +675,11 @@ const onServerPlayerLeft = (playerId: string) => {
 
 	if (idx !== -1) {
 		playerCursors.value.splice(idx, 1);
+	}
+
+	if (playerCursors.value.length === 0 && playerCursorInterval !== null) {
+		clearInterval(playerCursorInterval);
+		playerCursorInterval = null;
 	}
 };
 
