@@ -74,13 +74,13 @@ const gameFieldStartTime = ref<number | null>(null);
 const gameFieldEndTime = ref<number | null>(null);
 const gameFieldDeltaTime = ref<number | null>(null);
 
-const updateTimer = () => {
+const updateTimer = (now: number) => {
 	if (gameFieldStartTime.value) {
 		if (gameFieldEndTime.value) {
 			gameFieldDeltaTime.value = gameFieldEndTime.value - gameFieldStartTime.value;
 		} else {
-			gameFieldDeltaTime.value = performance.now() - gameFieldStartTime.value;
-			requestAnimationFrame(() => updateTimer());
+			gameFieldDeltaTime.value = now - gameFieldStartTime.value;
+			requestAnimationFrame(updateTimer);
 		}
 	} else {
 		gameFieldDeltaTime.value = null;
@@ -94,12 +94,12 @@ const onMinesUpdated = (nMines: number) => {
 const onGameStarted = (gameStartTime: number | null) => {
 	gameFieldStartTime.value = gameStartTime;
 	gameFieldEndTime.value = null;
-	updateTimer();
+	updateTimer(performance.now());
 };
 
 const onGameEnded = (gameEndTime: number | null) => {
 	gameFieldEndTime.value = gameEndTime;
-	updateTimer();
+	updateTimer(performance.now());
 };
 
 defineExpose({
