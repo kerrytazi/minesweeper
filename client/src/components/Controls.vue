@@ -3,14 +3,14 @@ import { onBeforeUpdate, onUpdated, ref } from 'vue';
 import { socket } from '@/socket';
 import PInput from './PInput.vue';
 
-const bot = ref(false);
+const autosolver = ref(false);
 const highlight = ref(false);
 
 const emit = defineEmits<{
 	reset: [];
 	historyBack: [];
 	historyForward: [];
-	bot: [active: boolean];
+	autosolver: [active: boolean];
 	highlight: [active: boolean];
 }>();
 
@@ -41,15 +41,15 @@ const onServerHistoryForward = () => {
 	emit('historyForward');
 };
 
-const onClientBot = (e: Event) => {
+const onClientAutoSolver = (e: Event) => {
 	let active = (<HTMLInputElement>e.target).checked;
-	emit('bot', active);
-	socket.emit('bot', active);
+	emit('autosolver', active);
+	socket.emit('autosolver', active);
 };
 
-const onServerBot = (active: boolean) => {
-	bot.value = active;
-	emit('bot', active);
+const onServerAutoSolver = (active: boolean) => {
+	autosolver.value = active;
+	emit('autosolver', active);
 };
 
 const onClientHighlight = (e: Event) => {
@@ -66,7 +66,7 @@ const onServerHighlight = (active: boolean) => {
 socket.on('reset', onServerReset);
 socket.on('historyBack', onServerHistoryBack);
 socket.on('historyForward', onServerHistoryForward);
-socket.on('bot', onServerBot);
+socket.on('autosolver', onServerAutoSolver);
 socket.on('highlight', onServerHighlight);
 
 const nGameFieldMines = ref(0);
@@ -116,8 +116,8 @@ defineExpose({
 		<button @click="onClientReset">Reset</button>
 		<button @click="onClientHistoryBack">Back</button>
 		<button @click="onClientHistoryForward">Forward</button>
-		<label for="checkbox-bot">Bot</label>
-		<input id="checkbox-bot" type="checkbox" @click="onClientBot" v-model="bot" />
+		<label for="checkboxauto-solver">AutoSolver</label>
+		<input id="checkboxauto-solver" type="checkbox" @click="onClientAutoSolver" v-model="autosolver" />
 		<label for="checkbox-highlight">Help highlight</label>
 		<input id="checkbox-highlight" type="checkbox" @click="onClientHighlight" v-model="highlight" />
 	</div>

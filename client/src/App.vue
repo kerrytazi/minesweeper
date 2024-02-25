@@ -46,7 +46,7 @@ const gameField = ref<typeof GameField | null>(null);
 			@reset="gameField?.onReset"
 			@historyBack="gameField?.onHistoryBack"
 			@historyForward="gameField?.onHistoryForward"
-			@bot="gameField?.onBot"
+			@autosolver="gameField?.onAutoSolver"
 			@highlight="gameField?.onHighlight"/>
 		<GameField
 			ref="gameField"

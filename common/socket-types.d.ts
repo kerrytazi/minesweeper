@@ -40,7 +40,7 @@ export interface RoomClientToServerEvents {
 	reset: () => void;
 	historyBack: () => void;
 	historyForward: () => void;
-	bot: (active: boolean) => void;
+	autosolver: (active: boolean) => void;
 	highlight: (active: boolean) => void;
 
 	settingsChanged: (settings: GameFieldSettings) => void;
@@ -59,7 +59,7 @@ export interface RoomServerToClientEvents {
 	reset: () => void;
 	historyBack: () => void;
 	historyForward: () => void;
-	bot: (active: boolean) => void;
+	autosolver: (active: boolean) => void;
 	highlight: (active: boolean) => void;
 
 	settingsChanged: (settings: GameFieldSettings) => void;

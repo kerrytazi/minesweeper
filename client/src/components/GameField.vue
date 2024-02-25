@@ -36,10 +36,10 @@ const nCols = ref(30);
 const nMines = ref(99);
 let { rand, rand_get } = splitmix32(1337);
 
-let useBot = false;
-let botInterval: ReturnType<typeof setInterval> | null = null;
+let useAutoSolver = false;
+let autosolverInterval: ReturnType<typeof setInterval> | null = null;
 let playerCursorInterval: ReturnType<typeof setInterval> | null = null;
-let botStepDelay = 10;
+let autosolverStepDelay = 10;
 
 const useHighlight = ref(false);
 const highlightsClick = ref<CellData[]>([]);
@@ -191,8 +191,8 @@ const onGameLose = () => {
 
 	emit('gameEnd', performance.now());
 
-	if (useBot) {
-		console.log(`[bot] game lost`);
+	if (useAutoSolver) {
+		console.log(`[autosolver] game lost`);
 	}
 };
 
@@ -209,8 +209,8 @@ const onGameWin = () => {
 
 	emit('gameEnd', performance.now());
 
-	if (useBot) {
-		console.log(`[bot] game won`);
+	if (useAutoSolver) {
+		console.log(`[autosolver] game won`);
 	}
 };
 
@@ -341,7 +341,7 @@ const onClick = (cell: CellData) => {
 	}
 };
 
-interface BotStepParams {
+interface AutoSolverStepParams {
 	clickCallback: (cell: CellData) => void;
 	flagCallback: (cell: CellData) => void;
 	singleStep: boolean;
@@ -351,11 +351,11 @@ interface BotStepParams {
 	logPrefix?: string;
 }
 
-const botStep = (botParams: BotStepParams) => {
+const autosolverStep = (autosolverParams: AutoSolverStepParams) => {
 	if (gameLose.value || gameWin.value) {
-		if (gameLose.value && botParams.allowRestartOnFail) {
-			if (botParams.useLog) {
-				console.log(`[${botParams.logPrefix??'bot'}] reset field`);
+		if (gameLose.value && autosolverParams.allowRestartOnFail) {
+			if (autosolverParams.useLog) {
+				console.log(`[${autosolverParams.logPrefix??'autosolver'}] reset field`);
 			}
 
 			resetField();
@@ -365,13 +365,13 @@ const botStep = (botParams: BotStepParams) => {
 	}
 
 	if (!generated.value) {
-		if (!botParams.allowRandom) {
+		if (!autosolverParams.allowRandom) {
 			return;
 		}
 
 		let row = (rand() * nRows.value) | 0;
 		let col = (rand() * nCols.value) | 0;
-		botParams.clickCallback(table.value[row][col]);
+		autosolverParams.clickCallback(table.value[row][col]);
 		return;
 	}
 
@@ -388,15 +388,15 @@ const botStep = (botParams: BotStepParams) => {
 					if (closed > 0 && closed === cell.nMinesAround - cell.nFlagsAround) {
 						forEachAround(cell, (c) => {
 							if (!c.isOpen && !c.isFlag) {
-								if (botParams.useLog) {
-									console.log(`[${botParams.logPrefix??'bot'}] obvious flag {${c.rowIndex} ${c.colIndex}}; because of {${cell.rowIndex} ${cell.colIndex}}`);
+								if (autosolverParams.useLog) {
+									console.log(`[${autosolverParams.logPrefix??'autosolver'}] obvious flag {${c.rowIndex} ${c.colIndex}}; because of {${cell.rowIndex} ${cell.colIndex}}`);
 								}
 
-								botParams.flagCallback(c);
+								autosolverParams.flagCallback(c);
 							}
 						});
 
-						if (botParams.singleStep) {
+						if (autosolverParams.singleStep) {
 							return;
 						}
 					}
@@ -418,15 +418,15 @@ const botStep = (botParams: BotStepParams) => {
 					if (closed > 0 && cell.nMinesAround === cell.nFlagsAround) {
 						forEachAround(cell, (c) => {
 							if (!c.isOpen && !c.isFlag) {
-								if (botParams.useLog) {
-									console.log(`[${botParams.logPrefix??'bot'}] open click {${c.rowIndex} ${c.colIndex}}; because of {${cell.rowIndex} ${cell.colIndex}}`);
+								if (autosolverParams.useLog) {
+									console.log(`[${autosolverParams.logPrefix??'autosolver'}] open click {${c.rowIndex} ${c.colIndex}}; because of {${cell.rowIndex} ${cell.colIndex}}`);
 								}
 
-								botParams.clickCallback(c);
+								autosolverParams.clickCallback(c);
 							}
 						});
 
-						if (botParams.singleStep) {
+						if (autosolverParams.singleStep) {
 							return;
 						}
 					}
@@ -452,7 +452,7 @@ const botStep = (botParams: BotStepParams) => {
 					for (let c of aroundCells) {
 						forEachAround(c, (c2) => {
 							if (found) {
-								if (botParams.singleStep) {
+								if (autosolverParams.singleStep) {
 									return;
 								}
 							}
@@ -477,11 +477,11 @@ const botStep = (botParams: BotStepParams) => {
 
 											for (let cc of aroundCells) {
 												if (!combine.includes(cc)) {
-													if (botParams.useLog) {
-														console.log(`[${botParams.logPrefix??'bot'}] flag {${cc.rowIndex} ${cc.colIndex}}; because of {${cell.rowIndex} ${cell.colIndex}} and {${c2.rowIndex} ${c2.colIndex}}`);
+													if (autosolverParams.useLog) {
+														console.log(`[${autosolverParams.logPrefix??'autosolver'}] flag {${cc.rowIndex} ${cc.colIndex}}; because of {${cell.rowIndex} ${cell.colIndex}} and {${c2.rowIndex} ${c2.colIndex}}`);
 													}
 													
-													botParams.flagCallback(cc);
+													autosolverParams.flagCallback(cc);
 												}
 											}
 										} else if (cell.nMinesAround - cell.nFlagsAround === 1 && c2.nMinesAround - c2.nFlagsAround === 1 && aroundCells2.length === combine.length && aroundCells.length - combine.length + c2.nMinesAround - c2.nFlagsAround > cell.nMinesAround - cell.nFlagsAround) { // kill me pls
@@ -489,11 +489,11 @@ const botStep = (botParams: BotStepParams) => {
 
 											for (let cc of aroundCells) {
 												if (!combine.includes(cc)) {
-													if (botParams.useLog) {
-														console.log(`[${botParams.logPrefix??'bot'}] 1-1-X click {${cc.rowIndex} ${cc.colIndex}}; because of {${cell.rowIndex} ${cell.colIndex}} and {${c2.rowIndex} ${c2.colIndex}}`);
+													if (autosolverParams.useLog) {
+														console.log(`[${autosolverParams.logPrefix??'autosolver'}] 1-1-X click {${cc.rowIndex} ${cc.colIndex}}; because of {${cell.rowIndex} ${cell.colIndex}} and {${c2.rowIndex} ${c2.colIndex}}`);
 													}
 
-													botParams.clickCallback(cc);
+													autosolverParams.clickCallback(cc);
 												}
 											}
 										}
@@ -503,7 +503,7 @@ const botStep = (botParams: BotStepParams) => {
 						});
 
 						if (found) {
-							if (botParams.singleStep) {
+							if (autosolverParams.singleStep) {
 								return;
 							}
 						}
@@ -513,7 +513,7 @@ const botStep = (botParams: BotStepParams) => {
 		}
 	}
 
-	if (botParams.allowRandom)
+	if (autosolverParams.allowRandom)
 	{
 		let poses = [];
 
@@ -528,17 +528,17 @@ const botStep = (botParams: BotStepParams) => {
 		let index = (rand() * poses.length) | 0;
 		let pos = poses[index];
 
-		if (botParams.useLog) {
-			console.log(`[${botParams.logPrefix??'bot'}] random click {${pos[0]} ${pos[1]}}`);
+		if (autosolverParams.useLog) {
+			console.log(`[${autosolverParams.logPrefix??'autosolver'}] random click {${pos[0]} ${pos[1]}}`);
 		}
 
 		onClick(table.value[pos[0]][pos[1]]);
 		return;
 	}
 
-	if (botParams.allowRestartOnFail) {
-		if (botParams.useLog) {
-			console.log(`[${botParams.logPrefix??'bot'}] reset field`);
+	if (autosolverParams.allowRestartOnFail) {
+		if (autosolverParams.useLog) {
+			console.log(`[${autosolverParams.logPrefix??'autosolver'}] reset field`);
 		}
 
 		resetField();
@@ -549,7 +549,7 @@ const updateHighlights = () => {
 	highlightsClick.value = [];
 	highlightsFlag.value = [];
 
-	botStep({
+	autosolverStep({
 		clickCallback: (c: CellData) => { highlightsClick.value.push(c); },
 		flagCallback: (c: CellData) => { highlightsFlag.value.push(c); },
 		singleStep: false,
@@ -570,30 +570,30 @@ const onHistoryForward = () => {
 	historyForward();
 };
 
-const onBot = (active: boolean) => {
-	if (useBot === active) {
+const onAutoSolver = (active: boolean) => {
+	if (useAutoSolver === active) {
 		return;
 	}
 
-	useBot = active;
+	useAutoSolver = active;
 
-	if (botInterval) {
-		clearInterval(botInterval);
-		botInterval = null;
+	if (autosolverInterval) {
+		clearInterval(autosolverInterval);
+		autosolverInterval = null;
 	}
 
 	if (active) {
-		botInterval = setInterval(() => {
-			botStep({
+		autosolverInterval = setInterval(() => {
+			autosolverStep({
 				clickCallback: onClick,
 				flagCallback: onFlag,
 				singleStep: true,
 				allowRandom: true,
 				allowRestartOnFail: true,
 				useLog: true,
-				logPrefix: 'bot',
+				logPrefix: 'autosolver',
 			});
-		}, botStepDelay);
+		}, autosolverStepDelay);
 	}
 };
 
@@ -725,7 +725,7 @@ defineExpose({
 	onReset,
 	onHistoryBack,
 	onHistoryForward,
-	onBot,
+	onAutoSolver,
 	onHighlight,
 	onSettingsChanged,
 });
